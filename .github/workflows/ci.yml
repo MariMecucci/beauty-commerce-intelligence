@@ -1,0 +1,19 @@
+name: CI - Data Engineering
+on:
+  push:
+  pull_request:
+
+jobs:
+  pipeline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run automated tests
+        run: python -m unittest discover -s tests -v
+      - name: Smoke test end-to-end
+        run: |
+          python scripts/01_generate_data.py
+          python scripts/02_run_pipeline.py

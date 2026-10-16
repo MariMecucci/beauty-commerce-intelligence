@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.vscode/
+.pytest_cache/
+*.db
+.DS_Store
+# Reprodutíveis: não publicar linhas geradas de clientes, mesmo que sintéticos
+data/raw/*.csv
+data/bronze/*.csv
+data/silver/*.csv
+data/gold/*.csv
+reports/*.json
+*.msi
