@@ -13,3 +13,4 @@ data/silver/*.csv
 data/gold/*.csv
 reports/*.json
 *.msi
+data/parquet/
