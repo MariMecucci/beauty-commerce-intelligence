@@ -1,4 +1,6 @@
+
 name: CI - Data Engineering
+
 on:
   push:
   pull_request:
@@ -6,14 +8,90 @@ on:
 jobs:
   pipeline-tests:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run automated tests
+
+      - name: Install DuckDB
+        run: python -m pip install duckdb==1.5.6
+
+      - name: Run automated unit tests
         run: python -m unittest discover -s tests -v
-      - name: Smoke test end-to-end
+
+      - name: Run CSV data pipeline
         run: |
           python scripts/01_generate_data.py
           python scripts/02_run_pipeline.py
+
+      - name: Export Silver and Gold to Parquet
+        run: python scripts/03_export_parquet.py
+
+      - name: Validate Parquet datasets and revenue
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import duckdb
+
+          root = Path("data/parquet")
+          expected = {
+              "silver/customers": {"customer_id", "state", "created_at"},
+              "silver/products": {"product_id", "brand", "product_name", "category", "list_price_cents"},
+              "silver/orders": {"order_id", "customer_id", "order_date", "status"},
+              "silver/order_items": {"order_item_id", "order_id", "product_id", "quantity", "unit_price_cents"},
+              "gold/monthly_sales": {"sale_month", "category", "brand", "order_count", "units_sold", "revenue_brl_cents"},
+              "gold/top_products": {"sale_month", "product_id", "revenue_brl_cents", "revenue_rank_in_month"},
+          }
+
+          with duckdb.connect(":memory:") as db:
+              for table, required_columns in expected.items():
+                  path = root / f"{table}.parquet"
+
+                  if not path.is_file():
+                      raise RuntimeError(f"Missing Parquet file: {path}")
+
+                  cursor = db.execute(
+                      "SELECT * FROM read_parquet(?) LIMIT 0",
+                      [str(path)]
+                  )
+                  columns = {col[0] for col in cursor.description}
+
+                  if not required_columns.issubset(columns):
+                      raise RuntimeError(f"Invalid columns: {table}")
+
+                  count = db.execute(
+                      "SELECT COUNT(*) FROM read_parquet(?)",
+                      [str(path)]
+                  ).fetchone()[0]
+
+                  if count == 0:
+                      raise RuntimeError(f"Empty dataset: {table}")
+
+                  print(f"OK | {table}: {count} rows")
+
+              revenue = db.execute(
+                  "SELECT SUM(revenue_brl_cents) FROM read_parquet(?)",
+                  [str(root / "gold/monthly_sales.parquet")]
+              ).fetchone()[0]
+
+              report = json.loads(
+                  Path("reports/data_quality.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+
+              expected_revenue = report[
+                  "revenue_brl_cents_completed_orders"
+              ]
+
+              if revenue != expected_revenue:
+                  raise RuntimeError("Gold revenue reconciliation failed")
+
+              print("Parquet validation and revenue reconciliation PASSED")
+          PY
