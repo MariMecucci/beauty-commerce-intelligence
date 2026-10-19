@@ -1,52 +1,60 @@
-
 # Beauty Commerce Intelligence
 
-**Data Engineering | Python | SQL | DuckDB | Apache Parquet | AWS (planned) | AI Agents (planned)**
+**Data Engineering | Python | SQL | DuckDB | Apache Parquet | S3-Compatible Object Storage | AI Agents (planned)**
 
-An evolving, end-to-end data engineering portfolio project for a **fictional beauty and K-beauty retailer**. The goal is to transform synthetic commerce data into trustworthy analytical datasets, document architecture decisions, and progressively extend the platform to AWS and AI-powered analytics.
+An evolving, end-to-end data engineering portfolio project for a **fictional beauty and K-beauty retailer**. The project transforms synthetic commerce data into validated analytical datasets, stores columnar outputs in a local S3-compatible object store, and queries those datasets with SQL.
 
-> **Current status: Phase 2 — local pipeline and Parquet export implemented.** AWS, Apache Airflow, MySQL, MongoDB, and AI agents are **planned, not implemented**. All brands, customers, transactions, and financial results in this project are **synthetic**.
+> **Current status: local data lake with S3-compatible storage.** The Python/SQL pipeline, automated tests, Parquet export, local SeaweedFS bucket, S3 uploads, and remote SQL reconciliation have been implemented and exercised locally. **No AWS account or AWS-managed services are used.** MySQL, MongoDB, Airflow, the analytical AI agent, and the dashboard are planned. All brands, customers, orders, and financial results are synthetic.
 
-## 1. Business context
+## 1. Business problem
 
-A beauty retailer needs a consistent view of customers, products, orders, and sales performance. This project builds a reproducible analytical pipeline to answer questions such as:
+A beauty retailer needs trustworthy information about its customers, product catalog, orders, and sales performance. This project addresses questions such as:
 
-- Which brands and beauty categories generate the highest revenue?
-- How does revenue change from month to month?
-- Which products lead monthly sales rankings?
-- How can data contracts and validation rules prevent unreliable analytical outputs?
+- Which brands and product categories generate the most revenue?
+- How does revenue change month by month?
+- Which products lead the monthly rankings?
+- Can analytical outputs be reproduced, validated, and reconciled across storage layers?
 
 ## 2. Implemented architecture
 
 ```mermaid
 flowchart TD
-    A[Synthetic data generator] --> B[Raw CSV: customers, products, orders, order items]
-    B --> C[Bronze: unchanged CSV snapshots and SHA-256 checksums]
-    C --> D[Silver: validated relational models in SQLite]
-    D --> E[Gold: monthly revenue and product rankings via SQL]
-    D --> F[Silver CSV exports]
-    E --> G[Gold CSV exports]
+    A[Synthetic customer, product, order and item data] --> B[Raw CSV]
+    B --> C[Bronze: source snapshots and SHA-256 checksums]
+    C --> D[Silver: validated SQLite models and CSV outputs]
+    D --> E[Gold: revenue and product ranking SQL models]
+    E --> F[Gold CSV outputs]
+    D --> G[Silver CSV outputs]
     F --> H[DuckDB: CSV to Parquet]
     G --> H
-    H --> I[Local Parquet datasets: Silver and Gold]
-    D --> J[Data quality JSON report]
+    H --> I[Local Silver and Gold Parquet files]
+    I --> J[Python boto3: upload and SHA-256 verification]
+    J --> K[SeaweedFS: local S3-compatible bucket]
+    K --> L[DuckDB httpfs: SQL over S3 objects]
+    I --> M[DuckDB: local SQL reconciliation]
+    L --> N[Compare remote and local aggregates]
+    M --> N
+    D --> Q[Data quality JSON report]
 ```
 
-**Important:** This is a local, single-machine implementation. The planned AWS services are not part of the architecture above yet.
+**Deployment scope:** SeaweedFS runs locally through Docker Compose. S3-compatible API operations are **not** equivalent to deploying Amazon S3, AWS Glue, or Amazon Athena.
 
 ## 3. Technology stack
 
-| Technology | Current purpose | Status |
+| Technology | Purpose | Status |
 |---|---|---|
-| Python 3.11+ | Synthetic data generation and ETL logic | Implemented |
-| SQL + SQLite | Relational validation, transformations, and analytics | Implemented |
-| DuckDB | Read CSV and export compressed Parquet files | Implemented |
-| Apache Parquet | Columnar files for Silver and Gold datasets | Implemented |
-| `unittest` | Automated tests of core pipeline behavior | Implemented |
-| GitHub Actions | Run pipeline tests and an end-to-end CSV smoke test on Linux | Implemented |
-| Amazon S3, Glue Data Catalog, Athena | Cloud data lake, metadata catalog, and SQL queries | Planned |
-| MySQL, MongoDB, Apache Airflow | Multiple sources and pipeline orchestration | Planned |
-| LangGraph and an LLM | Governed analytical AI agent | Planned |
+| Python 3.11+ | Reproducible synthetic data generation and ETL | Implemented |
+| SQL + SQLite | Relational validation and analytical transformations | Implemented |
+| DuckDB | Parquet export and SQL queries over local and S3-compatible storage | Implemented |
+| Apache Parquet | Columnar Silver and Gold datasets | Implemented |
+| Docker Compose + SeaweedFS | Local S3-compatible object storage | Implemented |
+| boto3 + python-dotenv | S3 API operations using local environment credentials | Implemented |
+| `unittest` | Core pipeline tests | Implemented |
+| GitHub Actions | Linux tests and CSV pipeline smoke test | Implemented |
+| AWS S3, Glue, Athena | Possible future deployment on actual AWS | Not implemented |
+| MySQL, MongoDB, Apache Airflow | Multiple sources, incremental processing, and orchestration | Planned |
+| Ollama + LangGraph | Local analytical AI agent | Planned |
+| Streamlit | Interactive analytical dashboard | Planned |
 
 ## 4. Repository structure
 
@@ -54,21 +62,22 @@ flowchart TD
 beauty-commerce-intelligence/
 ├── .github/workflows/ci.yml
 ├── data/
-│   ├── raw/                 # Generated source CSVs (ignored by Git)
-│   ├── bronze/              # Original source snapshots (ignored by Git)
-│   ├── silver/              # Validated CSV datasets (ignored by Git)
-│   ├── gold/                # Analytical CSV datasets (ignored by Git)
-│   └── parquet/             # Generated Parquet files (ignored by Git)
-│       ├── silver/
-│       └── gold/
+│   ├── raw/                   # Generated CSVs (ignored)
+│   ├── bronze/                # Generated CSV snapshots (ignored)
+│   ├── silver/                # Generated validated CSVs (ignored)
+│   ├── gold/                  # Generated analytical CSVs (ignored)
+│   └── parquet/               # Generated Silver/Gold Parquet (ignored)
 ├── docs/
 │   ├── adr/0001-local-first.md
 │   └── comece-aqui.md
-├── reports/                  # Generated quality reports (ignored by Git)
+├── reports/                   # Generated data quality report (ignored)
 ├── scripts/
 │   ├── 01_generate_data.py
 │   ├── 02_run_pipeline.py
-│   └── 03_export_parquet.py
+│   ├── 03_export_parquet.py
+│   ├── 04_validate_s3.py
+│   ├── 05_upload_parquet_s3.py
+│   └── 06_query_s3.py
 ├── sql/
 │   ├── schema.sql
 │   ├── gold_monthly_sales.sql
@@ -77,105 +86,151 @@ beauty-commerce-intelligence/
 │   ├── generator.py
 │   └── pipeline.py
 ├── tests/test_pipeline.py
+├── compose.yaml
 ├── .gitignore
 └── README.md
 ```
 
-## 5. Quick start
+The `.env` file is created locally and **must not be committed**. Generated datasets and Docker volumes are not stored in Git.
+
+## 5. Run the project locally
 
 ### Requirements
 
 - Python 3.11 or newer
-- Git (optional for local execution)
-- No AWS account or paid API is needed to run the current project
+- Docker Desktop with a running Docker Engine and Docker Compose
+- Internet access for package/image downloads and (if needed) the DuckDB `httpfs` extension
+- **No AWS account, paid cloud API, or credit card required**
 
-### Windows PowerShell
+### Step A — Create the Python environment (Windows PowerShell)
 
-Run these commands from the repository root:
+Run from the repository root:
 
 ```powershell
 py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install duckdb
+.\.venv\Scripts\python.exe -m pip install duckdb boto3 python-dotenv
+```
+
+### Step B — Generate, transform, and export data
+
+```powershell
 .\.venv\Scripts\python.exe .\scripts\01_generate_data.py
 .\.venv\Scripts\python.exe .\scripts\02_run_pipeline.py
 .\.venv\Scripts\python.exe .\scripts\03_export_parquet.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-### Linux / macOS
+The generator is deterministic by default (`seed=42`). The current demonstration dataset includes 80 customers, 24 products, 500 orders, and 1,267 order items. These are **synthetic** data.
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install duckdb
-.venv/bin/python scripts/01_generate_data.py
-.venv/bin/python scripts/02_run_pipeline.py
-.venv/bin/python scripts/03_export_parquet.py
-.venv/bin/python -m unittest discover -s tests -v
+### Step C — Configure the local S3-compatible service
+
+Create a local `.env` in the repository root using your own development-only values:
+
+```dotenv
+S3_ACCESS_KEY_ID=beauty_local
+S3_SECRET_ACCESS_KEY=replace_with_your_own_local_secret
 ```
 
-The scripts must be run in this order, because each phase consumes outputs from the previous phase. The local pipeline uses Python's standard library; **DuckDB is the only extra dependency for Parquet export**.
+Do not use personal passwords. Do not commit `.env` or paste its values in issues or screenshots.
 
-For additional setup details in Portuguese, see [the getting-started guide](docs/comece-aqui.md).
+Start the service:
 
-## 6. Generated datasets
+```powershell
+docker compose config --quiet
+docker compose up -d
+docker compose ps
+```
 
-| Layer | Output | Description |
+The local endpoint is `http://127.0.0.1:8333` and the demonstration bucket is `beauty-commerce`. The service should be bound to the loopback interface (`127.0.0.1`) rather than exposed publicly.
+
+### Step D — Validate, upload, and query objects
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\04_validate_s3.py
+.\.venv\Scripts\python.exe .\scripts\05_upload_parquet_s3.py
+.\.venv\Scripts\python.exe .\scripts\06_query_s3.py
+```
+
+The upload script writes six Parquet objects to the bucket (`silver/` and `gold/`) and compares SHA-256 hashes after downloading each object. The query script reads a Gold Parquet object over the S3-compatible API using DuckDB `httpfs`, then compares its aggregate results to the local Parquet counterpart.
+
+Stop the local service without removing its persistent volume:
+
+```powershell
+docker compose down
+```
+
+## 6. Data products
+
+| Dataset | Layer | Purpose |
 |---|---|---|
-| Raw | `data/raw/*.csv` | Synthetic customers, products, orders, and order items |
-| Bronze | `data/bronze/*.csv` | Unmodified snapshots of source files |
-| Silver | `data/silver/*.csv` | Validated relational records |
-| Gold | `data/gold/monthly_sales.csv` | Revenue by month, category, and brand |
-| Gold | `data/gold/top_products.csv` | Monthly product revenue rankings |
-| Silver Parquet | `data/parquet/silver/*.parquet` | Four compressed columnar datasets |
-| Gold Parquet | `data/parquet/gold/*.parquet` | Two compressed columnar datasets |
-| Quality | `reports/data_quality.json` | Validation status, row counts, and source checksums |
+| `customers`, `products`, `orders`, `order_items` | Raw / Bronze / Silver | Source entities and validated relational data |
+| `monthly_sales` | Gold | Revenue by month, category, and brand |
+| `top_products` | Gold | Monthly product revenue rankings |
+| `reports/data_quality.json` | Quality | Contract status, row counts, and Bronze checksums |
 
-With the default deterministic generator (`seed=42`), the sample includes **80 customers, 24 products, 500 orders, and 1,267 order items**. These numbers are demonstration data, not real-world sales.
+Silver and Gold Parquet files are uploaded with these object keys:
 
-Monetary values are stored as **integer BRL cents** in the pipeline. Revenue calculations include only `completed` orders; cancelled and refunded orders are excluded. Shipping is not modeled.
+```text
+s3://beauty-commerce/silver/customers.parquet
+s3://beauty-commerce/silver/products.parquet
+s3://beauty-commerce/silver/orders.parquet
+s3://beauty-commerce/silver/order_items.parquet
+s3://beauty-commerce/gold/monthly_sales.parquet
+s3://beauty-commerce/gold/top_products.parquet
+```
 
-## 7. Data quality and engineering decisions
+These are **private local object keys**, not publicly accessible AWS URLs.
 
-Current safeguards include:
+All monetary values are recorded as **integer BRL cents**. Revenue includes only completed orders; cancelled and refunded orders are excluded. Shipping is not modeled.
 
-- Required-column checks for input CSV files.
-- Non-empty input checks, unique identifiers, and referential consistency checks.
-- Business-rule validation for order status, prices, quantities, and dates.
-- Fail-fast behavior if an input contract is violated.
-- SHA-256 checksums for Bronze snapshots.
-- Row-count comparison between each exported CSV and its Parquet counterpart.
-- SQL CTEs, aggregations, and `DENSE_RANK()` for analytical transformations.
+## 7. Data quality, verification, and limitations
 
-**Scope of validation:** matching row counts does not prove that column types or every value are identical after CSV-to-Parquet conversion. Automated Parquet schema/value checks, freshness SLAs, and richer lineage are planned enhancements.
+Current safeguards:
 
-Architecture rationale: [ADR-0001 — Local-first implementation](docs/adr/0001-local-first.md).
+- Required-column and nonempty-source checks.
+- Unique identifiers and referential consistency checks.
+- Valid order statuses, dates, quantities, and nonnegative prices.
+- Fail-fast validation when a data contract fails.
+- SHA-256 checksums for Bronze copies.
+- Row-count reconciliation between CSV and Parquet exports.
+- SHA-256 reconciliation between uploaded and downloaded Parquet objects.
+- Aggregate reconciliation between local and remote DuckDB SQL queries.
+
+**Limitations:** row counts and aggregate reconciliation do not independently prove that all rows and all column types match. The current solution is batch-based, uses small synthetic datasets, and does not yet include incremental ingestion, automated S3 integration tests, a production-grade metadata catalog, or freshness SLAs.
+
+For a documented architecture choice, see [ADR-0001 — Local-first implementation](docs/adr/0001-local-first.md).
 
 ## 8. Testing and CI
 
-The repository includes three automated `unittest` cases covering:
+The current `unittest` suite covers:
 
-1. Expected outputs and aggregate revenue.
-2. Reproducibility of the synthetic data generator.
+1. Expected output files and aggregate revenue.
+2. Deterministic synthetic data generation.
 3. Rejection of invalid product references.
 
-Run the test suite:
-
-```bash
-python -m unittest discover -s tests -v
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-The [GitHub Actions workflow](.github/workflows/ci.yml) runs these tests and a CSV pipeline smoke test on Ubuntu for pushes and pull requests. **Parquet export is currently validated locally; it is not yet included in the CI workflow.**
+The [GitHub Actions workflow](.github/workflows/ci.yml) runs these tests and a CSV end-to-end smoke test on Ubuntu. **The Parquet export and S3-compatible integrations have been validated locally but are not yet exercised automatically in GitHub Actions.**
 
-## 9. Roadmap
+## 9. Zero-cloud-cost approach
 
-- [x] **Phase 1 — Local data engineering MVP:** synthetic datasets, Bronze/Silver/Gold processing, SQL models, data quality rules, and automated tests.
-- [x] **Phase 2 — Local columnar lake outputs:** DuckDB export to Apache Parquet, with row-count checks.
-- [ ] **Phase 3 — AWS data lake:** S3 storage, Glue Data Catalog, Athena queries, IAM least-privilege permissions, and cost controls.
-- [ ] **Phase 4 — Analytical AI agent:** constrained read-only tools over approved analytical datasets, response grounding, evaluation cases, and a simple demo UI.
-- [ ] **Phase 5 — Production-oriented extensions:** MySQL and MongoDB integration, incremental ingestion, Apache Airflow orchestration, freshness checks, monitoring, and stronger CI coverage.
+The current implementation runs on a local computer using free/open-source software and does not require AWS credentials or a paid inference API. It still uses local CPU, RAM, storage, electricity, and internet connectivity. The repository intentionally does not claim experience running AWS-managed services.
 
-Roadmap order may evolve as architectural trade-offs are validated.
+Future cloud deployment would require a separate cost and security assessment.
 
-## 10. Portfolio intent
+## 10. Roadmap
 
-This repository is designed to make engineering choices visible: reproducibility, SQL modeling, validation, platform portability, and progressively more realistic architecture. It is a **learning and portfolio project**, not a deployed production platform. Technologies marked **planned** should not be interpreted as implemented experience in this repository.
+- [x] **Phase 1 — Local data engineering:** synthetic data, Bronze/Silver/Gold, SQL transformations, data quality checks, and tests.
+- [x] **Phase 2 — Local columnar storage:** DuckDB CSV-to-Parquet export and row-count checks.
+- [x] **Phase 3 — S3-compatible lake (local):** SeaweedFS in Docker, boto3 upload, SHA-256 comparison, and remote DuckDB SQL reconciliation.
+- [ ] **Phase 4 — Governance and quality automation:** schema/value checks, local metadata catalog, improved tests, and GitHub Actions coverage.
+- [ ] **Phase 5 — Analytical AI agent:** local Ollama model, LangGraph tools restricted to approved analytics, evaluations, and traceable answers.
+- [ ] **Phase 6 — Additional data sources:** MySQL and MongoDB integration, incremental loads, and idempotence.
+- [ ] **Phase 7 — Orchestration and observability:** Airflow DAGs, monitoring, retries, and freshness checks.
+- [ ] **Phase 8 — Demo and portfolio presentation:** Streamlit dashboard, architecture documentation, and a demonstration.
+
+## 11. Portfolio intent
+
+This repository documents the progressive design of a reproducible data platform and its technical trade-offs. It is an educational portfolio project, not a deployed production service. Technologies marked **planned** or **not implemented** are not presented as delivered components.
