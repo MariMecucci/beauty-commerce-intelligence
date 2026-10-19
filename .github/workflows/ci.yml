@@ -95,3 +95,6 @@ jobs:
 
               print("Parquet validation and revenue reconciliation PASSED")
           PY
+
+      - name: Validate Parquet data integrity
+        run: python scripts/07_validate_parquet.py
