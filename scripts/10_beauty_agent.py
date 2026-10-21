@@ -3,7 +3,6 @@
 
 import json
 import sys
-import unicodedata
 from pathlib import Path
 
 from langchain_core.messages import (
@@ -19,6 +18,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from beauty_commerce.agent_policy import is_forecast_question
 from beauty_commerce.analytics_tools import (
     sales_overview,
     top_brands,
@@ -27,7 +27,7 @@ from beauty_commerce.analytics_tools import (
 
 
 # ==========================================================
-# 1. FERRAMENTAS SQL AUTORIZADAS
+# 1. FERRAMENTAS ANALITICAS AUTORIZADAS
 # ==========================================================
 
 @tool
@@ -60,97 +60,51 @@ TOOLS = [
 # ==========================================================
 
 SYSTEM_PROMPT = """
-Voce e o Beauty Analytics AI Agent, um agente especializado
+Voce e o Beauty Analytics AI Agent, especializado
 em analise comercial de uma empresa ficticia de beleza.
 
-Sua tarefa e selecionar ferramentas analiticas autorizadas.
+Escolha a ferramenta adequada para responder a pergunta.
 
-Ferramentas disponiveis:
-- Faturamento geral ou meses: get_sales_overview.
+Ferramentas:
+- Faturamento geral: get_sales_overview.
 - Ranking de marcas: get_top_brands.
 - Ranking de produtos: get_top_products.
 
-Regras obrigatorias:
-- Responda somente com base nos dados disponiveis.
+Regras:
+- Responda apenas com base nos dados disponiveis.
 - Para consultas comerciais, chame uma ferramenta.
-- Nunca invente valores, marcas, produtos ou periodos.
+- Nunca invente faturamento, marcas ou produtos.
 - Nao execute SQL diretamente.
-- Nao solicite acesso a arquivos ou sistemas externos.
-- Os dados comerciais sao sinteticos.
-- Nao apresente previsoes como resultados historicos.
+- Nao solicite credenciais ou arquivos externos.
+- Os dados sao sinteticos.
+- Nao produza previsoes.
 - Se nenhuma ferramenta se aplicar, nao chame ferramentas.
 """
 
 
 # ==========================================================
-# 3. FORMATACAO DE VALORES
+# 3. FORMATACAO MONETARIA
 # ==========================================================
 
 def format_brl(value):
-    """Formata valores numericos como moeda brasileira."""
+    """Formata valores como moeda brasileira."""
 
-    text = f"{value:,.2f}"
+    formatted = f"{value:,.2f}"
 
     return (
         "R$ "
-        + text.replace(",", "_")
+        + formatted.replace(",", "_")
         .replace(".", ",")
         .replace("_", ".")
     )
 
 
 # ==========================================================
-# 4. CONTROLE DE PERGUNTAS FORA DO ESCOPO
-# ==========================================================
-
-def normalize_text(text):
-    """Remove acentos e padroniza o texto."""
-
-    normalized = unicodedata.normalize(
-        "NFKD",
-        text.casefold(),
-    )
-
-    return "".join(
-        char
-        for char in normalized
-        if not unicodedata.combining(char)
-    )
-
-
-def is_forecast_question(question: str) -> bool:
-    """Identifica algumas solicitacoes de previsao nao suportadas."""
-
-    normalized = normalize_text(question)
-
-    unsupported_terms = (
-        "proximo ano",
-        "proximo mes",
-        "ano que vem",
-        "mes que vem",
-        "previsao",
-        "prever",
-        "projecao",
-        "projetar",
-        "faturamento futuro",
-        "vendas futuras",
-        "vai faturar",
-        "sera o faturamento",
-        "quanto vendera",
-    )
-
-    return any(
-        term in normalized
-        for term in unsupported_terms
-    )
-
-
-# ==========================================================
-# 5. CONSTRUCAO DO AGENTE LANGGRAPH
+# 4. CONSTRUCAO DO AGENTE LANGGRAPH
 # ==========================================================
 
 def build_agent():
-    """Constroi o agente com acesso a ferramentas autorizadas."""
+    """Constroi o agente com ferramentas analiticas autorizadas."""
 
     model = ChatOllama(
         model="qwen3:4b",
@@ -164,50 +118,34 @@ def build_agent():
     model_with_tools = model.bind_tools(TOOLS)
 
     def assistant_node(state: MessagesState):
-        response = model_with_tools.invoke(
-            state["messages"]
-        )
-
+        response = model_with_tools.invoke(state["messages"])
         return {"messages": [response]}
 
     graph = StateGraph(MessagesState)
 
-    graph.add_node(
-        "assistant",
-        assistant_node,
-    )
+    graph.add_node("assistant", assistant_node)
+    graph.add_node("tools", ToolNode(TOOLS))
 
-    graph.add_node(
-        "tools",
-        ToolNode(TOOLS),
-    )
-
-    graph.add_edge(
-        START,
-        "assistant",
-    )
+    graph.add_edge(START, "assistant")
 
     graph.add_conditional_edges(
         "assistant",
         tools_condition,
     )
 
-    # Encerrar apos executar as ferramentas.
-    # Os resultados comerciais serao formatados pelo Python.
-    graph.add_edge(
-        "tools",
-        END,
-    )
+    # Finaliza apos a execucao das ferramentas.
+    # Python formata os resultados sem usar texto do modelo.
+    graph.add_edge("tools", END)
 
     return graph.compile()
 
 
 # ==========================================================
-# 6. FORMATACAO DOS RESULTADOS SQL
+# 5. APRESENTACAO DOS RESULTADOS
 # ==========================================================
 
 def display_tool_results(tool_results):
-    """Apresenta exclusivamente resultados das ferramentas."""
+    """Apresenta resultados exclusivamente das ferramentas SQL."""
 
     print("\n=== FERRAMENTAS EXECUTADAS ===")
 
@@ -222,6 +160,7 @@ def display_tool_results(tool_results):
     print("\n=== RESPOSTA VALIDADA PELOS DADOS ===")
 
     for message in tool_results:
+
         data = json.loads(message.content)
 
         if message.name == "get_sales_overview":
@@ -229,12 +168,10 @@ def display_tool_results(tool_results):
                 f"Faturamento total: "
                 f"{format_brl(data['revenue_brl'])}"
             )
-
             print(
                 f"Meses analisados: "
                 f"{data['months_analyzed']}"
             )
-
             print("Fonte: Gold/monthly_sales")
 
         elif message.name == "get_top_brands":
@@ -267,10 +204,11 @@ def display_tool_results(tool_results):
 
 
 # ==========================================================
-# 7. EXECUCAO PRINCIPAL
+# 6. EXECUCAO PRINCIPAL
 # ==========================================================
 
 def main():
+
     question = (
         " ".join(sys.argv[1:]).strip()
         or "Qual foi o faturamento total e quantos meses foram analisados?"
@@ -279,8 +217,9 @@ def main():
     print("\n=== BEAUTY ANALYTICS AI AGENT ===")
     print(f"Pergunta: {question}")
 
-    # Bloqueio deterministico de algumas perguntas fora do escopo.
+    # Aplica a politica antes de chamar o modelo.
     if is_forecast_question(question):
+
         print("\n=== PERGUNTA FORA DO ESCOPO ===")
 
         print(
@@ -298,17 +237,11 @@ def main():
     result = agent.invoke(
         {
             "messages": [
-                SystemMessage(
-                    content=SYSTEM_PROMPT
-                ),
-                HumanMessage(
-                    content=question + "\n/no_think"
-                ),
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=question + "\n/no_think"),
             ]
         },
-        config={
-            "recursion_limit": 6
-        },
+        config={"recursion_limit": 6},
     )
 
     tool_results = [
@@ -317,8 +250,9 @@ def main():
         if isinstance(message, ToolMessage)
     ]
 
-    # Nunca apresentar resposta comercial sem consulta.
+    # Sem resultado de ferramenta, nao exibir dados comerciais.
     if not tool_results:
+
         print("\n=== CONSULTA NAO REALIZADA ===")
 
         print(
