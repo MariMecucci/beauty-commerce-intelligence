@@ -8,6 +8,16 @@ An end-to-end, **local-first data engineering and analytical AI portfolio projec
 
 > **Project status (October 2026):** A local Bronze/Silver/Gold data pipeline, Parquet export, S3-compatible object storage integration, data quality and metadata checks, CI, a Qwen3 4B tool-calling agent, and the **interactive Streamlit dashboard (BCI V5.2)** are implemented. The dashboard and agent were tested locally; GitHub Actions covers the deterministic data pipeline and 15 unit tests, **not** the Ollama runtime or interactive UI. AWS-managed services, Airflow, MySQL, and MongoDB are **not implemented**. All brands, customers, products, and financial figures are synthetic.
 
+## Featured technical case study
+
+Explore the architecture, engineering decisions, data-quality controls, and AI-powered analytics behind Beauty Commerce Intelligence.
+
+**[Read the complete technical case study](docs/portfolio/CASE_STUDY.md)**
+
+- [Architecture Overview](docs/portfolio/architecture-overview.md)
+- [Engineering Decisions](docs/portfolio/engineering-decisions.md)
+- [Product Showcase](docs/portfolio/product-showcase.md)
+
 ### Application preview
 
 ![Beauty Commerce Intelligence: interactive executive dashboard](docs/images/dashboard-overview.png)

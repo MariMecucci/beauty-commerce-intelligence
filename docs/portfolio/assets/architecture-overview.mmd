@@ -1,0 +1,16 @@
+flowchart LR
+  A[Synthetic commerce data] --> B[Raw CSV]
+  B --> C[Bronze SHA-256 snapshots]
+  C --> D[Silver validation]
+  D --> E[Gold SQL revenue and rankings]
+  E --> F[DuckDB Parquet export]
+  F --> G[Streamlit dashboard]
+  F --> H[Three approved DuckDB tools]
+  G --> I[AI Studio question]
+  I --> J[Ollama Qwen3 + LangGraph]
+  J --> H
+  F --> K[SeaweedFS S3-compatible storage (local)]
+  D --> L[Quality checks and catalog]
+  E --> L
+  F --> L
+  L --> M[GitHub Actions deterministic validation]
